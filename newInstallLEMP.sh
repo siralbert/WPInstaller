@@ -84,9 +84,6 @@ local mysqlrootpass=$1
 local mysqldb=$2
 local mysqluser=$3
 local mysqlpass=$4
-echo "$4"
-
-: << 'COMMENT2'
 
 # Installing MariabDB Server
 sudo apt install -y mariadb-server
@@ -97,9 +94,8 @@ sudo systemctl enable mariadb
 # Installing expect tool to work with interactive commands
 sudo apt install -y expect
 
-# Automating the Database configuration
+# Automate the Database configuration ?? do i need to add sudo infront of spawn?
 MYSQL_ROOT_PASSWORD=$mysqlrootpass
-
 SECURE_MYSQL=$(expect -c "
 set timeout 3
 spawn mysql_secure_installation
@@ -123,26 +119,21 @@ expect \"Reload privilege tables now?\"
 send \"y\r\"
 expect eof
 ")
-
-echo "$SECURE_MYSQL"
-COMMENT2
-
+#echo "$SECURE_MYSQL"
 
 if [[ $dbsqlfile ]]; then
-	echo "dbsql file exists"
-	echo "import database from sql file . . ."
+	echo "importing database from sql file . . ."
 
-	mysql -u $mysqluser -p$MYSQL_ROOT_PASSWORD $mysqldb < $dbsqlfile
+	sudo mysql -u root -p$MYSQL_ROOT_PASSWORD < $dbsqlfile
 
 else
-	echo "dbsql file does not exist"
 
 # TODO: Add check to see if database exists?  Check already exists.
 # Create new database and new database user for WordPress
-mysql -u root -p$MYSQL_ROOT_PASSWORD -e "create or replace database '$mysqldb';
+sudo mysql -u root -p$MYSQL_ROOT_PASSWORD -e "create or replace database $mysqldb;
 show warnings;
-create user '$mysqluser'@'localhost' identified by '$mysqlpass';
-grant all privileges on '$mysqldb'.* to '$mysqluser'@'localhost';
+create user '$mysqluser'@localhost identified by '$mysqlpass';
+grant all privileges on $mysqldb.* to '$mysqluser'@localhost;
 flush privileges;
 exit;"
 
