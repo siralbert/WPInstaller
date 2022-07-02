@@ -4,7 +4,7 @@
 #
 # Template for a generic CLI
 #
-# Optional args?  if not specified install everything.
+# Optional args?  if not specified see usage above to install everything.
 #     -c [web_domain] [web_email]    generate TLS/SSL certificate and install
 #     -d [mysql rootpass] [mysql database] [mysqluser] [mysql pass] [db file] TODO: check if database exists 
 #     feature: dev env.(ipv4 address) versus prod env.(domain name):  make backup of old database and replace with new one
@@ -13,7 +13,6 @@
 
 
 readonly ARGS="$#"
-
 #  Convert shell command arguments into an array with ()
 readonly ARGV=($@)
 declare -A args
@@ -144,58 +143,48 @@ fi
 # Replace current WordPress database with a new one
 # Feature: Use new web address or IP if specified (ie: for wordpress dev. environment)
 #
-# Usage:    replacedb [mysql rootpass] [database name ] [old domain or ip] [db file|new domain name or ipaddress]
+# Usage:    replacedb [mysql rootpass] [database name ] [old domain or ip] [new domain or ip]
 #         or replacedb [mysql rootpass] [database name] [new sql database]
 replacedb(){
 
-
-# backup old database to dbs.sql
-echo "make backup of old WP database in /var/www/html/dbs.sql.bak" 
-mysqldump -u root -p$1 -x -B $2 > /var/www/html/dbs.sql
+local mysqlrootpass=$1
+local mysqldb=$2
+local newsqldb=$3
 local OLDADDRESS=$3
 local NEWADDRESS=$4
 
-echo "$OLDADDRESS"
-echo "$NEWADDRESS"
+local args=$#
+echo "$args"
 
-# if database file is specified then 
-# TODO: use reqex to determine if $3 argument is a sql database
-if [[ $3 -eq '*\.sql' ]]; then
-
-mysql -u root -p$MYSQL_ROOT_PASSWORD -e "create or replace database '$3';
-show warnings;
-exit;"
-
-else # ipaddress or domain name specified
-
-# sed -i.bak -e "s/gmental\.com/54\.241\.45\.216/g w output2.txt" db.sql
-# grep -o '54.241.45.216' db.sql | wc -l
-
-  echo "count of old addresses in database file"
-  grep -o '$OLDADDRESS' dbs.sql | wc -l
-  sed -i.bak -e "s/$OLDADDRESS/$NEWADDRESS/g w output.txt" dbs.sql
-  echo "count of new addresses in database file"
-  grep -o '$NEWADDRESS' dbs.sql | wc -l
-
+# backup old database to db.sql if there are only 3 arguments
+if [[ args -eq 3 ]]; then
+  echo "make backup sql file of old database in current directory "
+  sudo mysqldump -u root -p$mysqlrootpass -x -B $mysqldb > db.sql.bak
+  echo "import new database from sql file"
+  sudo mysql -u root -p$mysqlrootpass < $newsqldb
+  exit;
 fi
+
+  sudo mysqldump -u root -p$mysqlrootpass -x -B $mysqldb > dbs.sql
+  echo "count of old addresses in sql file"
+  grep -o $OLDADDRESS dbs.sql | wc -l
+
+  echo "make backup sql file of old database in current directory and replace address"
+  sed -i.bak -e "s/$OLDADDRESS/$NEWADDRESS/g w output.log" dbs.sql
+  echo "count of new addresses in sql file"
+  grep -o $NEWADDRESS dbs.sql | wc -l
+
+  echo "import database from sql file"
+  sudo mysql -u root -p$mysqlrootpass < dbs.sql
 }
-
-
-#    mysql -u root -p$1 -e "create or replace database '$2';
-#    show warnings;
-#    exit;"
-#    mysql -u root -p$1 -e "create or replace database '$2';
-#    show warnings;
-#    exit;"
-
-
-
 
 
 main() {
 
 # Check number of arguments
 if [[ $ARGS -eq 7 ]]; then
+
+	# TODO: execute full install script if all arguments are given
     echo "Correct number of arguments including command"
 
     echo ${args[mysqlrootpass]}
@@ -204,6 +193,7 @@ if [[ $ARGS -eq 7 ]]; then
 	echo ${args[mysqlpass]}
 	echo ${args[webdomain]}
 	echo ${args[webemail]}
+	# END TODO:
 
 # Generate and install new SSL/TLS security certificate"
 elif [[ "${ARGV[0]}" == "-c" && $ARGS -eq 3 ]]; then
@@ -213,17 +203,12 @@ elif [[ "${ARGV[0]}" == "-c" && $ARGS -eq 3 ]]; then
 # Create a new database with specified arguments
 elif [[ "${ARGV[0]}" == "-d" && $ARGS -ge 5 ]]; then
 	echo "create a new database with specified arguments"
-
-	# TESTING:
-    #-d [mysql rootpass] [mysql database] [mysqluser] [mysql pass] [OPT: db file] TODO: check if database exists 
-    echo "calling newdb function . . ."
 	newdb ${ARGV[1]} ${ARGV[2]} ${ARGV[3]} ${ARGV[4]} ${ARGV[5]} ;
-	# TESTING:
 
 # Replace the current database with specified sql file or replace current database with new ip/domain
-elif [[ "${ARGV[0]}" == '-R' && $ARGS -eq 2 ]]; then
-	echo "${ARGV[0]}"
+elif [[ "${ARGV[0]}" == '-R' && $ARGS -ge 4 ]]; then
 	echo "replace the current database with specified sql file"
+	replacedb ${ARGV[1]} ${ARGV[2]} ${ARGV[3]} ${ARGV[4]} ;
 else
     echo "$ARGV"
 fi
