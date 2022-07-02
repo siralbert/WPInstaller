@@ -78,6 +78,16 @@ fi
 }
 
 newdb(){
+
+local dbsqlfile=$5
+local mysqlrootpass=$1
+local mysqldb=$2
+local mysqluser=$3
+local mysqlpass=$4
+echo "$4"
+
+: << 'COMMENT2'
+
 # Installing MariabDB Server
 sudo apt install -y mariadb-server
 # Starting MariaDB Service
@@ -88,7 +98,7 @@ sudo systemctl enable mariadb
 sudo apt install -y expect
 
 # Automating the Database configuration
-MYSQL_ROOT_PASSWORD=${args[mysqlrootpass]}
+MYSQL_ROOT_PASSWORD=$mysqlrootpass
 
 SECURE_MYSQL=$(expect -c "
 set timeout 3
@@ -115,24 +125,38 @@ expect eof
 ")
 
 echo "$SECURE_MYSQL"
+COMMENT2
 
-# Add check to see if database exists?  Check already exists.
+
+if [[ $dbsqlfile ]]; then
+	echo "dbsql file exists"
+	echo "import database from sql file . . ."
+
+	mysql -u $mysqluser -p$MYSQL_ROOT_PASSWORD $mysqldb < $dbsqlfile
+
+else
+	echo "dbsql file does not exist"
+
+# TODO: Add check to see if database exists?  Check already exists.
 # Create new database and new database user for WordPress
-mysql -u root -p$MYSQL_ROOT_PASSWORD -e "create or replace database '${args[mysqldb]}';
+mysql -u root -p$MYSQL_ROOT_PASSWORD -e "create or replace database '$mysqldb';
 show warnings;
-create user '${args[mysqluser]}'@'localhost' identified by '${args[mysqlpass]}';
-grant all privileges on '${args[mysqldb]}'.* to '${args[mysqluser]}'@'localhost';
+create user '$mysqluser'@'localhost' identified by '$mysqlpass';
+grant all privileges on '$mysqldb'.* to '$mysqluser'@'localhost';
 flush privileges;
 exit;"
 
+fi
 }
+
 
 # Replace current WordPress database with a new one
 # Feature: Use new web address or IP if specified (ie: for wordpress dev. environment)
-# 
+#
 # Usage:    replacedb [mysql rootpass] [database name ] [old domain or ip] [db file|new domain name or ipaddress]
 #         or replacedb [mysql rootpass] [database name] [new sql database]
 replacedb(){
+
 
 # backup old database to dbs.sql
 echo "make backup of old WP database in /var/www/html/dbs.sql.bak" 
@@ -169,6 +193,9 @@ fi
 #    mysql -u root -p$1 -e "create or replace database '$2';
 #    show warnings;
 #    exit;"
+#    mysql -u root -p$1 -e "create or replace database '$2';
+#    show warnings;
+#    exit;"
 
 
 
@@ -177,7 +204,7 @@ fi
 main() {
 
 # Check number of arguments
-if [[ $ARGS -eq 6 ]]; then
+if [[ $ARGS -eq 7 ]]; then
     echo "Correct number of arguments including command"
 
     echo ${args[mysqlrootpass]}
@@ -193,9 +220,14 @@ elif [[ "${ARGV[0]}" == "-c" && $ARGS -eq 3 ]]; then
 	cert ${ARGV[0]} ${ARGV[1]} ${ARGV[2]} ;
 
 # Create a new database with specified arguments
-elif [[ "${ARGV[0]}" == "-d" && $ARGS -ge 4 ]]; then
-	echo "${ARGV[0]}"
+elif [[ "${ARGV[0]}" == "-d" && $ARGS -ge 5 ]]; then
 	echo "create a new database with specified arguments"
+
+	# TESTING:
+    #-d [mysql rootpass] [mysql database] [mysqluser] [mysql pass] [OPT: db file] TODO: check if database exists 
+    echo "calling newdb function . . ."
+	newdb ${ARGV[1]} ${ARGV[2]} ${ARGV[3]} ${ARGV[4]} ${ARGV[5]} ;
+	# TESTING:
 
 # Replace the current database with specified sql file or replace current database with new ip/domain
 elif [[ "${ARGV[0]}" == '-R' && $ARGS -eq 2 ]]; then
@@ -213,7 +245,7 @@ main
 
 
 # COMMENT block
-: <<COMMENT
+: << 'COMMENT'
 echo ${args[mysqlrootpass]}
 echo ${args[mysqldb]}
 echo ${args[mysqluser]}
