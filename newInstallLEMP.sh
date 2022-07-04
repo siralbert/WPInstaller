@@ -11,7 +11,7 @@
 #     -R [mysql rootpass] [database name ] [db file|new domain name or ipaddress] 
 #
 
-
+readonly WPDIR="/var/www/html"
 readonly ARGS="$#"
 #  Convert shell command arguments into an array with ()
 readonly ARGV=($@)
@@ -46,14 +46,22 @@ usage () {
     echo ""
 	prettyprint "   Usage: $0 [MySQL RootPass] [MySQL Database] [mysqluser] [MySQL Pass] [web_domain] [web_email]" $YELLOW
 	echo ""
-    prettyprint "     -c [web_domain] [web_email]    generate TLS/SSL certificate and install" $YELLOW
-    prettyprint "     -d [mysql rootpass] [mysql database] [mysqluser] [mysql pass] [db file] TODO: check if database exists" $YELLOW 
-    prettyprint "     -R [database name ] [db file]" $YELLOW
+    prettyprint "     -c [web_domain] [web_email]    generate TLS/SSL certificate and install " $YELLOW
+    prettyprint "     -d [mysql rootpass] [mysql database] [mysqluser] [mysql pass] [db file] " $YELLOW 
+    prettyprint "     -R [mysql rootpass] [database name ] [db file|new domain name or ipaddress] " $YELLOW
     echo ""
 exit 0
 }
 
 [ -z $1 ] && { usage; }
+
+# Methods:
+# cert()
+# newdb()
+# replacedb()
+# wpconfig()
+# wpfiles()
+
 
 # Function for generating and installing new SSL/TLS security certificate by certbot"
 # You must have A and CNAME records added to your domain name registrar with correct IPs before running these commands$
@@ -67,12 +75,12 @@ sudo snap install --classic certbot
 # ARGV[1] is the web domain, ARGV[2] is the email address
 if [[ $1 -ne '-c' ]]; then
     sudo ln -s /snap/bin/certbot /usr/bin/certbot
-    certbot run -n --nginx --agree-tos -d ${ARGV[1]},www.${ARGV[1]}  -m  ${ARGV[2]}
+    certbot run -n --nginx --agree-tos -d ${ARGV[1]},www.${ARGV[1]}  -m  ${ARGV[2]} --redirect
 
 else # ONLY WHEN NECESSARY: re-install because a main setting (ie: ipv4 address has changed)
     #sudo certbot certonly -n -v --nginx --agree-tos --force-renew -d ${ARGV[1]},www.${ARGV[1]} -m ${ARGV[2]}
     # run the following when certificate expires to renew certificate in normal situations
-   certbot run -n --nginx --agree-tos -d ${ARGV[1]},www.${ARGV[1]}  -m  ${ARGV[2]}
+   certbot run -n --nginx --agree-tos -d ${ARGV[1]},www.${ARGV[1]}  -m  ${ARGV[2]} --redirect
 fi
 }
 
@@ -178,19 +186,111 @@ fi
   sudo mysql -u root -p$mysqlrootpass < dbs.sql
 }
 
+installPHPandWP(){
+# Installing PHP and PHP Essential Extensions
+sudo apt install -y php
+sudo apt install -y php-mysql php-gd php-common php-mbstring php-curl php-cli
+sudo apt install -y php-fpm
+
+# Restarting the NGINX Server
+sudo systemctl restart nginx
+
+# Installing and Configuring WordPress
+wget https://wordpress.org/latest.zip
+sudo apt install -y unzip
+unzip $PWD/latest.zip
+
+# Copying WordPress files to NGINX Default Directory
+rm /var/www/html/*
+mv $PWD/wordpress/* /var/www/html
+
+# Configuring NGINX to host wordpress website
+rm /etc/nginx/sites-enabled/default
+touch /etc/nginx/sites-enabled/wordpress.conf
+chmod 666 /etc/nginx/sites-enabled/wordpress.conf
+#chmod 664 /etc/nginx/sites-enabled/wordpress.conf
+
+# Creating the NGINX configuration file for WordPress
+cat <<EOT >> /etc/nginx/sites-enabled/wordpress.conf
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+        server_name ubuntuserver.com;
+    root /var/www/html;
+
+    index index.php;
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+    }
+    location ~ /\.ht {
+        deny all;
+    }
+}
+EOT
+
+}
+
+wpconfig(){
+
+    local mysqldb=$1
+    local mysqluser=$2
+    local mysqlpass=$3
+    
+    #LINE numbers for config vars in wp-config.php file
+    local dbname=`grep -n $WPDIR/wp-config.php -e "define( 'DB_NAME'" | cut -d: -f1`
+    local dbuser=`grep -n $WPDIR/wp-config.php -e "define( 'DB_USER'" | cut -d: -f1`
+    local dbpasswd=`grep -n $WPDIR/wp-config.php -e "define( 'DB_PASSWORD'" | cut -d: -f1`
+
+	#REPLACE WITH . . .
+	REPLACEdbname="define( 'DB_NAME', '$mysqldb' );"
+	REPLACEdbuser="define( 'DB_USER', '$mysqluser' );"
+	REPLACEdbpasswd="define( 'DB_PASSWORD', '$mysqlpass' );"
+
+	#WPDIR
+
+	sed -i "${dbname}s/.*/${REPLACEdbname}/" $WPDIR/wp-config.php
+	sed -i "${dbuser}s/.*/${REPLACEdbuser}/" $WPDIR/wp-config.php
+	sed -i "${dbpasswd}s/.*/${REPLACEdbpasswd}/" $WPDIR/wp-config.php
+
+}
+
+# change wpfiles permissions
+wpfiles(){
+	echo "Change file permissions and secure files in /var/www directory"
+	echo "TODO: add feature to copy files for customized child themes and plugins"
+
+}
 
 main() {
 
 # Check number of arguments
-if [[ $ARGS -eq 7 ]]; then
+if [[ $ARGS -ge 4 ]]; then
 
-	# TODO: execute full install script if all arguments are given
-    echo "Correct number of arguments including command"
+	# TODO: execute production install if all arguments are given.  else do a dev. install
+    echo "WP Install"
+#	echo ${args[mysqlrootpass]}
+	#newdb ${args[mysqlrootpass]} ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};
+	#installPHPandWP ;
+    wpconfig ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};
+    wpfiles;
 
-    echo ${args[mysqlrootpass]}
-	echo ${args[mysqldb]}
-	echo ${args[mysqluser]}
-	echo ${args[mysqlpass]}
+
+	# specified for production install
+	if [[ $ARGS -eq 6 ]]; then
+		cert ${args[webdomain]} ${args[webemail]} ;
+
+		newdb ${args[mysqlrootpass]} ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};
+
+		#installPHPandWP ;
+#	    wpconfig ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};
+	    wpfiles;
+
+	fi
 	echo ${args[webdomain]}
 	echo ${args[webemail]}
 	# END TODO:
@@ -210,7 +310,7 @@ elif [[ "${ARGV[0]}" == '-R' && $ARGS -ge 4 ]]; then
 	echo "replace the current database with specified sql file"
 	replacedb ${ARGV[1]} ${ARGV[2]} ${ARGV[3]} ${ARGV[4]} ;
 else
-    echo "$ARGV"
+    echo "Error: CLI"
 fi
 
 }
