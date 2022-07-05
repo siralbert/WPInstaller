@@ -192,26 +192,37 @@ sudo apt install -y php
 sudo apt install -y php-mysql php-gd php-common php-mbstring php-curl php-cli
 sudo apt install -y php-fpm
 
+# uninstall apache2
+sudo apt remove -y apache2
+
+# Installing NGINX Server
+sudo apt install -y nginx
+
+# TODO: Check
+# Starting NGINX Service
+sudo systemctl start nginx
+# Enabling NGINX service so that it keeps up and running during restarts
+sudo systemctl enable nginx
 # Restarting the NGINX Server
 sudo systemctl restart nginx
+# TODO: Check
 
 # Installing and Configuring WordPress
 wget https://wordpress.org/latest.zip
 sudo apt install -y unzip
-unzip $PWD/latest.zip
+unzip -o $PWD/latest.zip
 
 # Copying WordPress files to NGINX Default Directory
-rm /var/www/html/*
-mv $PWD/wordpress/* /var/www/html
+sudo rm -r /var/www/html/*
+sudo mv $PWD/wordpress/* /var/www/html
 
 # Configuring NGINX to host wordpress website
-rm /etc/nginx/sites-enabled/default
-touch /etc/nginx/sites-enabled/wordpress.conf
-chmod 666 /etc/nginx/sites-enabled/wordpress.conf
-#chmod 664 /etc/nginx/sites-enabled/wordpress.conf
+sudo rm /etc/nginx/sites-enabled/default
+sudo touch /etc/nginx/sites-enabled/wordpress.conf
+sudo chmod 666 /etc/nginx/sites-enabled/wordpress.conf
 
 # Creating the NGINX configuration file for WordPress
-cat <<EOT >> /etc/nginx/sites-enabled/wordpress.conf
+sudo cat <<EOT >> /etc/nginx/sites-enabled/wordpress.conf
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -242,9 +253,9 @@ wpconfig(){
     local mysqlpass=$3
     
     #LINE numbers for config vars in wp-config.php file
-    local dbname=`grep -n $WPDIR/wp-config.php -e "define( 'DB_NAME'" | cut -d: -f1`
-    local dbuser=`grep -n $WPDIR/wp-config.php -e "define( 'DB_USER'" | cut -d: -f1`
-    local dbpasswd=`grep -n $WPDIR/wp-config.php -e "define( 'DB_PASSWORD'" | cut -d: -f1`
+    local dbname=`grep -n $WPDIR/wp-config-sample.php -e "define( 'DB_NAME'" | cut -d: -f1`
+    local dbuser=`grep -n $WPDIR/wp-config-sample.php -e "define( 'DB_USER'" | cut -d: -f1`
+    local dbpasswd=`grep -n $WPDIR/wp-config-sample.php -e "define( 'DB_PASSWORD'" | cut -d: -f1`
 
 	#REPLACE WITH . . .
 	REPLACEdbname="define( 'DB_NAME', '$mysqldb' );"
@@ -253,17 +264,48 @@ wpconfig(){
 
 	#WPDIR
 
-	sed -i "${dbname}s/.*/${REPLACEdbname}/" $WPDIR/wp-config.php
-	sed -i "${dbuser}s/.*/${REPLACEdbuser}/" $WPDIR/wp-config.php
-	sed -i "${dbpasswd}s/.*/${REPLACEdbpasswd}/" $WPDIR/wp-config.php
+	sed -i "${dbname}s/.*/${REPLACEdbname}/" $WPDIR/wp-config-sample.php
+	sed -i "${dbuser}s/.*/${REPLACEdbuser}/" $WPDIR/wp-config-sample.php
+	sed -i "${dbpasswd}s/.*/${REPLACEdbpasswd}/" $WPDIR/wp-config-sample.php
 
+	mv wp-config-sample.php wp-config.php
+
+	# Add SALTS
+	CMD=`lynx -dump -dont_wrap_pre https://api.wordpress.org/secret-key/1.1/salt/`
+	
+	LINE=`grep -n 'wp-config.php' -e "define( 'AUTH_KEY'"| cut -d: -f 1`
+	echo $LINE
+	
+	sed -i /_SALT/d wp-config.php
+	sed -i /_KEY/d wp-config.php
+	echo $CMD | sed -i -- "${LINE}r /dev/stdin" wp-config.php
 }
 
 # change wpfiles permissions
 wpfiles(){
-	echo "Change file permissions and secure files in /var/www directory"
-	echo "TODO: add feature to copy files for customized child themes and plugins"
+	echo "Change file permissions and secure files in /var/www directory . . . "
+	echo ". . . Please wait this may take a while . . ."
 
+	echo "TODO: add feature to copy files for customized child themes and plugins"
+	local themedir=$1
+
+	if [[ $themedir ]]; then
+		cp -r $themedir $WPDIR/wp-content/themes
+	fi
+
+	# add user to www-data group
+	sudo adduser $USER www-data
+	# change ownership of all directories and files in /var/www to $USER:www-data
+	sudo chown $USER:www-data -R /var/www
+	
+	# allow new files to inherit the www-data group id of the parent directory
+	sudo find /var/www/ -type d -exec chmod g+s {} \;
+	
+	# add group write to all files
+	find /var/www -type f -exec sudo chmod g+w {} \;
+	# add group write to all directories
+	find /var/www -type d -exec sudo chmod g+w {} \;
+	
 }
 
 main() {
@@ -272,12 +314,13 @@ main() {
 if [[ $ARGS -ge 4 ]]; then
 
 	# TODO: execute production install if all arguments are given.  else do a dev. install
-    echo "WP Install"
+    echo "WP Install--dev environment"
 #	echo ${args[mysqlrootpass]}
-	#newdb ${args[mysqlrootpass]} ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};
-	#installPHPandWP ;
+	newdb ${args[mysqlrootpass]} ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};  #TODO: specify sql file to generate database from
+#	replacedb ${args[mysqlrootpass]} ${args[mysqldb]} gmental.com 127.0.0.1;
+	installPHPandWP
     wpconfig ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};
-    wpfiles;
+    wpfiles;     #  TODO:  Use copy custom theme option
 
 
 	# specified for production install
@@ -291,8 +334,8 @@ if [[ $ARGS -ge 4 ]]; then
 	    wpfiles;
 
 	fi
-	echo ${args[webdomain]}
-	echo ${args[webemail]}
+#	echo ${args[webdomain]}
+#	echo ${args[webemail]}
 	# END TODO:
 
 # Generate and install new SSL/TLS security certificate"
@@ -316,15 +359,3 @@ fi
 }
 
 main
-
-
-
-
-# COMMENT block
-: << 'COMMENT'
-echo ${args[mysqlrootpass]}
-echo ${args[mysqldb]}
-echo ${args[mysqluser]}
-echo ${args[mysqlpass]}
-echo ${args[webdomain]}
-COMMENT

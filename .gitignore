@@ -1,3 +1,7 @@
+*.zip
+*.zip*
+echo "wordpress/"
+*.php
 *.bak
 *.sql
 *.log
