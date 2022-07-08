@@ -95,9 +95,10 @@ local mysqlpass=$4
 # Installing MariabDB Server
 sudo apt install -y mariadb-server
 # Starting MariaDB Service
-sudo systemctl start mariadb
+#sudo systemctl start mariadb
+sudo service mysql start
 # Enabling MariaDB service so that it keeps up and running during restarts
-sudo systemctl enable mariadb
+#sudo systemctl enable mariadb
 # Installing expect tool to work with interactive commands
 sudo apt install -y expect
 
@@ -200,11 +201,12 @@ sudo apt install -y nginx
 
 # TODO: Check
 # Starting NGINX Service
-sudo systemctl start nginx
+sudo service nginx start
 # Enabling NGINX service so that it keeps up and running during restarts
-sudo systemctl enable nginx
+#sudo service nginx enable
+#sudo systemctl enable nginx
 # Restarting the NGINX Server
-sudo systemctl restart nginx
+#sudo service nginx restart
 # TODO: Check
 
 # Installing and Configuring WordPress
@@ -222,6 +224,8 @@ sudo touch /etc/nginx/sites-enabled/wordpress.conf
 sudo chmod 666 /etc/nginx/sites-enabled/wordpress.conf
 
 # Creating the NGINX configuration file for WordPress
+CMD=`sudo service --status-all 2>/dev/null | grep -oE 'php[0-9]+.[0-9]+' | cut -d- -f1 | tail -n1`
+PHPVER=$CMD
 sudo cat <<EOT >> /etc/nginx/sites-enabled/wordpress.conf
 server {
     listen 80 default_server;
@@ -236,7 +240,7 @@ server {
     }
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+        fastcgi_pass unix:/run/php/$PHPVER-fpm.sock;
     }
     location ~ /\.ht {
         deny all;
@@ -268,17 +272,18 @@ wpconfig(){
 	sed -i "${dbuser}s/.*/${REPLACEdbuser}/" $WPDIR/wp-config-sample.php
 	sed -i "${dbpasswd}s/.*/${REPLACEdbpasswd}/" $WPDIR/wp-config-sample.php
 
-	mv wp-config-sample.php wp-config.php
-
 	# Add SALTS
 	CMD=`lynx -dump -dont_wrap_pre https://api.wordpress.org/secret-key/1.1/salt/`
 	
-	LINE=`grep -n 'wp-config.php' -e "define( 'AUTH_KEY'"| cut -d: -f 1`
+	LINE=`grep -n $WPDIR/wp-config-sample.php -e "define( 'AUTH_KEY'"| cut -d: -f 1`
 	echo $LINE
 	
-	sed -i /_SALT/d wp-config.php
-	sed -i /_KEY/d wp-config.php
-	echo $CMD | sed -i -- "${LINE}r /dev/stdin" wp-config.php
+	sed -i /_SALT/d $WPDIR/wp-config-sample.php
+	sed -i /_KEY/d $WPDIR/wp-config-sample.php
+	echo $CMD | sed -i -- "${LINE}r /dev/stdin" $WPDIR/wp-config-sample.php
+
+	mv $WPDIR/wp-config-sample.php $WPDIR/wp-config.php
+
 }
 
 # change wpfiles permissions
@@ -322,21 +327,15 @@ if [[ $ARGS -ge 4 ]]; then
     wpconfig ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};
     wpfiles;     #  TODO:  Use copy custom theme option
 
+elif [[ $ARGS -eq 6 ]]; then
+	# production install
 
-	# specified for production install
-	if [[ $ARGS -eq 6 ]]; then
-		cert ${args[webdomain]} ${args[webemail]} ;
-
+		cert ${args[webdomain]} ${args[webemail]} 
 		newdb ${args[mysqlrootpass]} ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};
-
 		#installPHPandWP ;
-#	    wpconfig ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};
+	    #wpconfig ${args[mysqldb]} ${args[mysqluser]} ${args[mysqlpass]};
 	    wpfiles;
 
-	fi
-#	echo ${args[webdomain]}
-#	echo ${args[webemail]}
-	# END TODO:
 
 # Generate and install new SSL/TLS security certificate"
 elif [[ "${ARGV[0]}" == "-c" && $ARGS -eq 3 ]]; then

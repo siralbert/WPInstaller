@@ -5,3 +5,6 @@ echo "wordpress/"
 *.bak
 *.sql
 *.log
+*.swp
+*.html
+*.conf
